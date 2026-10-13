@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble remote_trainer.lua from the template, the UI and build maps.
+"""Assemble the mGBA script from the template, the UI and build maps.
 
 Usage: build_lua.py <gamedata.json> <out.lua> <name>=<rom.map> [<name>=<rom.map> ...]
 """
