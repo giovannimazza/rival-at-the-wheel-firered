@@ -1127,7 +1127,7 @@ console:log("==============================================")
 if port then
   log("Server started on port " .. port)
   log("CODE for player 2:  " .. CODE)
-  log("Test locally:  http://localhost:" .. port .. "/?k=" .. CODE)
+  log("Test locally:  http://127.0.0.1:" .. port .. "/?k=" .. CODE)
   log("For internet play, run the tunnel (start_tunnel.bat) and send player 2")
   log("the https://....trycloudflare.com link together with the code.")
 else

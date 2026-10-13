@@ -52,7 +52,7 @@ Existing FireRed save files keep working. Give the `.sav` file the same name as 
 2. Go to **Tools → Scripting…**, then **File → Load script…** and choose `rival_at_the_wheel.lua`.
 3. The scripting console shows `Patch detected` and a **6-character code** for player 2.
 
-Load the script again each time you restart mGBA. To try it on the same PC, open `http://localhost:8888`.
+Load the script again each time you restart mGBA. To try it on the same PC, open `http://127.0.0.1:8888`.
 
 ### 3. Put it online
 
@@ -96,8 +96,9 @@ If you change `PORT`, change it in `start_tunnel.bat` too.
 **Notes:**
 - The game waits forever for player 2, so turbo mode is safe.
 - Don't **pause** mGBA. While it's paused the script stops too, and player 2's page stops updating.
+- If cloudflared shows `Unable to reach the origin service ... [::1]:8888`, the tunnel is pointing at `localhost`, which Windows resolves to IPv6. The script's server only listens on IPv4, so the tunnel must use `http://127.0.0.1:8888`. The included `start_tunnel.bat` already does this.
 - If a battle seems stuck, it's waiting for player 2. The mGBA console says so.
-- If player 2 isn't around, player 1 can open `http://localhost:8888` and turn on **Auto AI**.
+- If player 2 isn't around, player 1 can open `http://127.0.0.1:8888` and turn on **Auto AI**.
 
 ## How it works
 

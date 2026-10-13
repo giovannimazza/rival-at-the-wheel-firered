@@ -43,7 +43,7 @@ echo    appears below.
 echo  - Send it to player 2 together with the CODE shown in the mGBA console.
 echo  - Keep this window open while you play. The address changes every time.
 echo.
-"%CF%" tunnel --url http://localhost:%PORT%
+"%CF%" tunnel --url http://127.0.0.1:%PORT%
 echo.
 echo The tunnel has closed.
 pause
