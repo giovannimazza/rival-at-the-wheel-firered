@@ -1,0 +1,1007 @@
+diff --git a/Makefile b/Makefile
+index 8b454dbd1..83b64428b 100644
+--- a/Makefile
++++ b/Makefile
+@@ -76,7 +76,7 @@ INCLUDE_CPP_ARGS := $(INCLUDE_DIRS:%=-iquote %)
+ INCLUDE_SCANINC_ARGS := $(INCLUDE_DIRS:%=-I %)
+ 
+ O_LEVEL ?= 2
+-CPPFLAGS := $(INCLUDE_CPP_ARGS) -Wno-trigraphs -D$(GAME_VERSION) -DREVISION=$(GAME_REVISION) -D$(GAME_LANGUAGE) -DMODERN=$(MODERN)
++CPPFLAGS := $(INCLUDE_CPP_ARGS) $(EXTRA_CPPFLAGS) -Wno-trigraphs -D$(GAME_VERSION) -DREVISION=$(GAME_REVISION) -D$(GAME_LANGUAGE) -DMODERN=$(MODERN)
+ ifeq ($(MODERN),0)
+   CPPFLAGS += -I tools/agbcc/include -I tools/agbcc -nostdinc -undef -std=gnu89
+   CC1 := tools/agbcc/bin/agbcc$(EXE)
+diff --git a/include/battle_ai_switch_items.h b/include/battle_ai_switch_items.h
+index 461994d62..0b51c9b8c 100644
+--- a/include/battle_ai_switch_items.h
++++ b/include/battle_ai_switch_items.h
+@@ -23,5 +23,6 @@ enum {
+ 
+ void AI_TrySwitchOrUseItem(void);
+ u8 GetMostSuitableMonToSwitchInto(void);
++u8 GetAI_ItemType(u8 itemId, const u8 *itemEffect);
+ 
+ #endif // GUARD_BATTLE_AI_SWITCH_ITEMS_H
+diff --git a/include/battle_remote.h b/include/battle_remote.h
+new file mode 100644
+index 000000000..d68548edd
+--- /dev/null
++++ b/include/battle_remote.h
+@@ -0,0 +1,121 @@
++#ifndef GUARD_BATTLE_REMOTE_H
++#define GUARD_BATTLE_REMOTE_H
++
++// Remote Trainer: lets a second person (through an mGBA Lua script)
++// choose what the opposing trainer does in every trainer battle.
++// The game writes a request into gRemoteControl and waits; the script
++// writes the answer back. Layout must stay in sync with remote_trainer.lua.
++
++#define REMOTE_MAGIC        0x4C544352 // "RCTL"
++#define REMOTE_VERSION      1
++
++// Request types (game -> script)
++#define REMOTE_REQ_NONE       0
++#define REMOTE_REQ_ACTION     1 // move, item, switch or AI
++#define REMOTE_REQ_MOVE       2 // move or AI only
++#define REMOTE_REQ_SWITCH_IN  3 // replacement after faint: party slot or AI
++
++// Response types (script -> game)
++#define REMOTE_RESP_MOVE    1 // arg1 = move slot, arg2 = target battler
++#define REMOTE_RESP_ITEM    2 // arg1 = trainer item slot
++#define REMOTE_RESP_SWITCH  3 // arg1 = party slot
++#define REMOTE_RESP_AI      4 // let the normal AI decide
++
++// Error codes written to lastError when a response is rejected
++#define REMOTE_ERR_NONE          0
++#define REMOTE_ERR_BAD_TYPE      1
++#define REMOTE_ERR_BAD_MOVE      2
++#define REMOTE_ERR_MOVE_BLOCKED  3
++#define REMOTE_ERR_BAD_ITEM      4
++#define REMOTE_ERR_BAD_SWITCH    5
++#define REMOTE_ERR_TRAPPED       6
++
++// Poll results
++#define REMOTE_RESULT_WAIT   0
++#define REMOTE_RESULT_DONE   1
++#define REMOTE_RESULT_USE_AI 2
++
++struct RemoteBattlerInfo
++{
++    /*0x00*/ u16 species;
++    /*0x02*/ u16 hp;
++    /*0x04*/ u16 maxHP;
++    /*0x06*/ u16 item;
++    /*0x08*/ u32 status1;
++    /*0x0C*/ u32 status2;
++    /*0x10*/ u16 moves[4];
++    /*0x18*/ u8 pp[4];
++    /*0x1C*/ u8 maxPp[4];
++    /*0x20*/ s8 statStages[8];
++    /*0x28*/ u8 level;
++    /*0x29*/ u8 present;
++    /*0x2A*/ u8 type1;
++    /*0x2B*/ u8 type2;
++    /*0x2C*/ u8 ability;
++    /*0x2D*/ u8 partyIndex;
++    /*0x2E*/ u16 lastMove;
++    /*0x30*/ u8 nickname[12];
++    /*0x3C*/ u32 status3;
++}; // size 0x40
++
++struct RemoteMonInfo
++{
++    /*0x00*/ u16 species;
++    /*0x02*/ u16 hp;
++    /*0x04*/ u16 maxHP;
++    /*0x06*/ u16 heldItem;
++    /*0x08*/ u32 status;
++    /*0x0C*/ u16 moves[4];
++    /*0x14*/ u8 pp[4];
++    /*0x18*/ u8 level;
++    /*0x19*/ u8 flags; // bit0 exists, bit1 on field, bit2 can be sent in, bit3 egg
++    /*0x1A*/ u8 nickname[12];
++    /*0x26*/ u8 maxPp[4];
++    /*0x2A*/ u8 padding[2];
++}; // size 0x2C
++
++struct RemoteControl
++{
++    /*0x000*/ u32 magic;
++    /*0x004*/ u8 reqSeq;
++    /*0x005*/ u8 reqType;
++    /*0x006*/ u8 reqBattler;
++    /*0x007*/ u8 respSeq;
++    /*0x008*/ u8 respType;
++    /*0x009*/ u8 respArg1;
++    /*0x00A*/ u8 respArg2;
++    /*0x00B*/ u8 lastError;
++    /*0x00C*/ u32 battleTypeFlags;
++    /*0x010*/ u16 trainerId;
++    /*0x012*/ u8 battlersCount;
++    /*0x013*/ u8 inBattle;
++    /*0x014*/ u16 trainerItems[4];
++    /*0x01C*/ u8 trainerClassName[14];
++    /*0x02A*/ u8 trainerName[14];
++    /*0x038*/ u8 unusableMoves;
++    /*0x039*/ u8 canSwitch;
++    /*0x03A*/ u8 itemUsable;
++    /*0x03B*/ u8 switchableMons;
++    /*0x03C*/ u8 turn;
++    /*0x03D*/ u8 absentFlags;
++    /*0x03E*/ u16 weather;
++    /*0x040*/ u16 sideStatuses[2];
++    /*0x044*/ u32 version;
++    /*0x048*/ struct RemoteBattlerInfo battlers[4];
++    /*0x148*/ struct RemoteMonInfo party[6];
++    /*0x250*/ u8 playerPartyStatus[6]; // 0 none, 1 ok, 2 status problem, 3 fainted
++    /*0x256*/ u8 padding[2];
++}; // size 0x258
++
++extern struct RemoteControl gRemoteControl;
++extern const u8 gRemoteControlSignature[];
++
++bool8 RemoteControl_IsActive(void);
++void RemoteControl_InitBattler(u8 battler);
++void RemoteControl_EndBattle(void);
++void RemoteControl_BeginRequest(u8 battler, u8 type);
++u8 RemoteControl_Poll(u8 battler);
++bool8 RemoteControl_TakeAiTurn(u8 battler);
++bool8 RemoteControl_TakePendingMove(u8 battler);
++
++#endif // GUARD_BATTLE_REMOTE_H
+diff --git a/ld_script.ld b/ld_script.ld
+index 9a4b45031..47a145665 100644
+--- a/ld_script.ld
++++ b/ld_script.ld
+@@ -80,6 +80,7 @@ SECTIONS {
+         src/battle_gfx_sfx_util.o(.text);
+         src/battle_controller_opponent.o(.text);
+         src/battle_ai_switch_items.o(.text);
++        src/battle_remote.o(.text);
+         src/battle_controller_link_opponent.o(.text);
+         src/pokemon.o(.text);
+         src/trig.o(.text);
+@@ -418,6 +419,7 @@ SECTIONS {
+         src/battle_controller_player.o(.rodata);
+         src/battle_anim_smokescreen.o(.rodata);
+         src/battle_controller_opponent.o(.rodata);
++        src/battle_remote.o(.rodata);
+         src/battle_controller_link_opponent.o(.rodata);
+         src/pokemon.o(.rodata);
+         src/trig.o(.rodata);
+diff --git a/ld_script_rev10.ld b/ld_script_rev10.ld
+index 4eb3bc2ee..12af8bdc3 100644
+--- a/ld_script_rev10.ld
++++ b/ld_script_rev10.ld
+@@ -82,6 +82,7 @@ SECTIONS {
+         src/battle_gfx_sfx_util.o(.text);
+         src/battle_controller_opponent.o(.text);
+         src/battle_ai_switch_items.o(.text);
++        src/battle_remote.o(.text);
+         src/battle_controller_link_opponent.o(.text);
+         src/pokemon.o(.text);
+         src/trig.o(.text);
+@@ -419,6 +420,7 @@ SECTIONS {
+         src/battle_controller_player.o(.rodata);
+         src/battle_anim_smokescreen.o(.rodata);
+         src/battle_controller_opponent.o(.rodata);
++        src/battle_remote.o(.rodata);
+         src/battle_controller_link_opponent.o(.rodata);
+         src/pokemon.o(.rodata);
+         src/trig.o(.rodata);
+diff --git a/src/battle_ai_switch_items.c b/src/battle_ai_switch_items.c
+index 73c013cfa..e8afd31ad 100644
+--- a/src/battle_ai_switch_items.c
++++ b/src/battle_ai_switch_items.c
+@@ -543,7 +543,7 @@ u8 GetMostSuitableMonToSwitchInto(void)
+     return bestMonId;
+ }
+ 
+-static u8 GetAI_ItemType(u8 itemId, const u8 *itemEffect) // NOTE: should take u16 as item Id argument
++u8 GetAI_ItemType(u8 itemId, const u8 *itemEffect) // NOTE: should take u16 as item Id argument
+ {
+     if (itemId == ITEM_FULL_RESTORE)
+         return AI_ITEM_FULL_RESTORE;
+diff --git a/src/battle_controller_opponent.c b/src/battle_controller_opponent.c
+index b4b6ebbdf..1e55350cb 100644
+--- a/src/battle_controller_opponent.c
++++ b/src/battle_controller_opponent.c
+@@ -15,6 +15,7 @@
+ #include "battle_gfx_sfx_util.h"
+ #include "battle_ai_script_commands.h"
+ #include "battle_ai_switch_items.h"
++#include "battle_remote.h"
+ #include "trainer_tower.h"
+ #include "constants/battle_anim.h"
+ #include "constants/moves.h"
+@@ -161,6 +162,7 @@ static void OpponentDummy(void)
+ void SetControllerToOpponent(void)
+ {
+     gBattlerControllerFuncs[gActiveBattler] = OpponentBufferRunCommand;
++    RemoteControl_InitBattler(gActiveBattler);
+ }
+ 
+ static void OpponentBufferRunCommand(void)
+@@ -1336,18 +1338,78 @@ static void OpponentHandlePrintSelectionString(void)
+     OpponentBufferExecCompleted();
+ }
+ 
+-static void OpponentHandleChooseAction(void)
++static void OpponentChooseAction_AI(void)
+ {
+     AI_TrySwitchOrUseItem();
+     OpponentBufferExecCompleted();
+ }
+ 
++static void OpponentWaitRemoteAction(void)
++{
++    switch (RemoteControl_Poll(gActiveBattler))
++    {
++    case REMOTE_RESULT_DONE:
++        OpponentBufferExecCompleted();
++        break;
++    case REMOTE_RESULT_USE_AI:
++        OpponentChooseAction_AI();
++        break;
++    }
++}
++
++static void OpponentHandleChooseAction(void)
++{
++    if (RemoteControl_IsActive())
++    {
++        RemoteControl_BeginRequest(gActiveBattler, REMOTE_REQ_ACTION);
++        gBattlerControllerFuncs[gActiveBattler] = OpponentWaitRemoteAction;
++        return;
++    }
++    OpponentChooseAction_AI();
++}
++
+ static void OpponentHandleUnknownYesNoBox(void)
+ {
+     OpponentBufferExecCompleted();
+ }
+ 
++static void OpponentChooseMove_AI(void);
++
++static void OpponentWaitRemoteMove(void)
++{
++    switch (RemoteControl_Poll(gActiveBattler))
++    {
++    case REMOTE_RESULT_DONE:
++        OpponentBufferExecCompleted();
++        break;
++    case REMOTE_RESULT_USE_AI:
++        OpponentChooseMove_AI();
++        break;
++    }
++}
++
+ static void OpponentHandleChooseMove(void)
++{
++    if (RemoteControl_IsActive())
++    {
++        if (RemoteControl_TakeAiTurn(gActiveBattler))
++        {
++            OpponentChooseMove_AI();
++            return;
++        }
++        if (RemoteControl_TakePendingMove(gActiveBattler))
++        {
++            OpponentBufferExecCompleted();
++            return;
++        }
++        RemoteControl_BeginRequest(gActiveBattler, REMOTE_REQ_MOVE);
++        gBattlerControllerFuncs[gActiveBattler] = OpponentWaitRemoteMove;
++        return;
++    }
++    OpponentChooseMove_AI();
++}
++
++static void OpponentChooseMove_AI(void)
+ {
+     u8 chosenMoveId;
+     struct ChooseMoveStruct *moveInfo = (struct ChooseMoveStruct *)(&gBattleBufferA[gActiveBattler][4]);
+@@ -1407,7 +1469,34 @@ static void OpponentHandleChooseItem(void)
+     OpponentBufferExecCompleted();
+ }
+ 
++static void OpponentChoosePokemon_AI(void);
++
++static void OpponentWaitRemoteSwitch(void)
++{
++    switch (RemoteControl_Poll(gActiveBattler))
++    {
++    case REMOTE_RESULT_DONE:
++        OpponentBufferExecCompleted();
++        break;
++    case REMOTE_RESULT_USE_AI:
++        OpponentChoosePokemon_AI();
++        break;
++    }
++}
++
+ static void OpponentHandleChoosePokemon(void)
++{
++    if (RemoteControl_IsActive()
++     && *(gBattleStruct->AI_monToSwitchIntoId + (GetBattlerPosition(gActiveBattler) >> 1)) == PARTY_SIZE)
++    {
++        RemoteControl_BeginRequest(gActiveBattler, REMOTE_REQ_SWITCH_IN);
++        gBattlerControllerFuncs[gActiveBattler] = OpponentWaitRemoteSwitch;
++        return;
++    }
++    OpponentChoosePokemon_AI();
++}
++
++static void OpponentChoosePokemon_AI(void)
+ {
+     s32 chosenMonId;
+ 
+diff --git a/src/battle_main.c b/src/battle_main.c
+index 64c9e59b7..3620cc8c9 100644
+--- a/src/battle_main.c
++++ b/src/battle_main.c
+@@ -6,6 +6,7 @@
+ #include "battle_controllers.h"
+ #include "battle_interface.h"
+ #include "battle_main.h"
++#include "battle_remote.h"
+ #include "battle_message.h"
+ #include "battle_scripts.h"
+ #include "battle_setup.h"
+@@ -3862,6 +3863,7 @@ static void FreeResetData_ReturnToOvOrDoEvolutions(void)
+ {
+     if (!gPaletteFade.active)
+     {
++        RemoteControl_EndBattle();
+         ResetSpriteData();
+         if (gLeveledUpInBattle == 0 || gBattleOutcome != B_OUTCOME_WON)
+             gBattleMainFunc = ReturnFromBattleToOverworld;
+diff --git a/src/battle_remote.c b/src/battle_remote.c
+new file mode 100644
+index 000000000..9a9deca23
+--- /dev/null
++++ b/src/battle_remote.c
+@@ -0,0 +1,623 @@
++#include "global.h"
++#include "battle.h"
++#include "battle_anim.h"
++#include "battle_controllers.h"
++#include "battle_util.h"
++#include "battle_ai_switch_items.h"
++#include "battle_remote.h"
++#include "data.h"
++#include "pokemon.h"
++#include "trainer_tower.h"
++#include "util.h"
++#include "characters.h"
++#include "constants/abilities.h"
++#include "constants/item_effects.h"
++#include "constants/items.h"
++#include "constants/moves.h"
++#include "constants/pokemon.h"
++#include "constants/trainers.h"
++#include "constants/opponents.h"
++
++// Remote Trainer mailbox. The Lua script finds it through the address list
++// generated at build time and checks gRemoteControlSignature in ROM.
++EWRAM_DATA struct RemoteControl gRemoteControl = {0};
++static EWRAM_DATA u8 sRemoteWant[MAX_BATTLERS_COUNT] = {0};
++static EWRAM_DATA u8 sRemotePendingMove[MAX_BATTLERS_COUNT] = {0};
++static EWRAM_DATA u8 sRemotePendingTarget[MAX_BATTLERS_COUNT] = {0};
++static EWRAM_DATA u8 sRemoteAiTurn[MAX_BATTLERS_COUNT] = {0};
++
++const u8 gRemoteControlSignature[] = "REMOTE-TRAINER-1";
++
++#define NO_PENDING_MOVE 0xFF
++
++static void CopyName(u8 *dest, const u8 *src, u8 maxLen)
++{
++    u8 i;
++
++    for (i = 0; i < maxLen - 1 && src[i] != EOS; i++)
++        dest[i] = src[i];
++    for (; i < maxLen; i++)
++        dest[i] = EOS;
++}
++
++bool8 RemoteControl_IsActive(void)
++{
++    if (!(gBattleTypeFlags & BATTLE_TYPE_TRAINER))
++        return FALSE;
++    if (gBattleTypeFlags & (BATTLE_TYPE_LINK | BATTLE_TYPE_SAFARI | BATTLE_TYPE_OLD_MAN_TUTORIAL
++                          | BATTLE_TYPE_POKEDUDE | BATTLE_TYPE_MULTI | BATTLE_TYPE_BATTLE_TOWER))
++        return FALSE;
++    return TRUE;
++}
++
++static u8 GetPartner(u8 battler)
++{
++    return GetBattlerAtPosition(BATTLE_PARTNER(GetBattlerPosition(battler)));
++}
++
++// Same trap rules the battle engine applies to the player's party menu.
++static bool8 RemoteCanSwitch(u8 battler)
++{
++    bool8 canSwitch = TRUE;
++    u8 savedAbility = gLastUsedAbility;
++
++    if (gBattleMons[battler].status2 & (STATUS2_WRAPPED | STATUS2_ESCAPE_PREVENTION)
++     || gStatuses3[battler] & STATUS3_ROOTED)
++        canSwitch = FALSE;
++    else if (ABILITY_ON_OPPOSING_FIELD(battler, ABILITY_SHADOW_TAG))
++        canSwitch = FALSE;
++    else if (ABILITY_ON_OPPOSING_FIELD(battler, ABILITY_ARENA_TRAP)
++          && !IS_BATTLER_OF_TYPE(battler, TYPE_FLYING)
++          && gBattleMons[battler].ability != ABILITY_LEVITATE)
++        canSwitch = FALSE;
++    else if (AbilityBattleEffects(ABILITYEFFECT_CHECK_FIELD_EXCEPT_BATTLER, battler, ABILITY_MAGNET_PULL, 0, 0)
++          && IS_BATTLER_OF_TYPE(battler, TYPE_STEEL))
++        canSwitch = FALSE;
++    gLastUsedAbility = savedAbility;
++    return canSwitch;
++}
++
++// Party slots that may be sent out in place of the given battler.
++static u8 GetSwitchableMons(u8 battler)
++{
++    s32 i;
++    u8 mask = 0;
++    u8 partner = battler;
++    u16 species;
++
++    if (gBattleTypeFlags & BATTLE_TYPE_DOUBLE)
++        partner = GetPartner(battler);
++    for (i = 0; i < PARTY_SIZE; i++)
++    {
++        species = GetMonData(&gEnemyParty[i], MON_DATA_SPECIES_OR_EGG);
++        if (species == SPECIES_NONE || species == SPECIES_EGG)
++            continue;
++        if (GetMonData(&gEnemyParty[i], MON_DATA_HP) == 0)
++            continue;
++        if (i == gBattlerPartyIndexes[battler] || i == gBattlerPartyIndexes[partner])
++            continue;
++        if (partner != battler && i == gBattleStruct->monToSwitchIntoId[partner])
++            continue;
++        mask |= 1 << i;
++    }
++    return mask;
++}
++
++// Works out whether a trainer item can be used now and with which AI flags.
++// Mirrors ShouldUseItem() in battle_ai_switch_items.c without the "should" part.
++static bool8 CheckTrainerItem(u8 battler, u8 slot, u8 *typeOut, u8 *flagsOut)
++{
++    u16 item;
++    const u8 *itemEffects;
++    u8 type;
++    u8 flags = 0;
++    bool8 usable = FALSE;
++
++    if (slot >= MAX_TRAINER_ITEMS)
++        return FALSE;
++    if (gBattleTypeFlags & (BATTLE_TYPE_LINK | BATTLE_TYPE_BATTLE_TOWER | BATTLE_TYPE_EREADER_TRAINER))
++        return FALSE;
++    item = gBattleResources->battleHistory->trainerItems[slot];
++    if (item < ITEM_POTION || item > LAST_BERRY_INDEX)
++        return FALSE;
++    if (gItemEffectTable[item - ITEM_POTION] == NULL)
++        return FALSE;
++    if (item == ITEM_ENIGMA_BERRY)
++        itemEffects = gSaveBlock1Ptr->enigmaBerry.itemEffect;
++    else
++        itemEffects = gItemEffectTable[item - ITEM_POTION];
++    if (gBattleMons[battler].hp == 0)
++        return FALSE;
++
++    type = GetAI_ItemType(item, itemEffects);
++    switch (type)
++    {
++    case AI_ITEM_FULL_RESTORE:
++        if (gBattleMons[battler].hp < gBattleMons[battler].maxHP
++         || gBattleMons[battler].status1 != 0
++         || gBattleMons[battler].status2 & STATUS2_CONFUSION)
++            usable = TRUE;
++        break;
++    case AI_ITEM_HEAL_HP:
++        if (GetItemEffectParamOffset(item, 4, 4) != 0
++         && gBattleMons[battler].hp < gBattleMons[battler].maxHP)
++            usable = TRUE;
++        break;
++    case AI_ITEM_CURE_CONDITION:
++        if (itemEffects[3] & ITEM3_SLEEP && gBattleMons[battler].status1 & STATUS1_SLEEP)
++            flags |= 0x20;
++        if (itemEffects[3] & ITEM3_POISON && gBattleMons[battler].status1 & (STATUS1_POISON | STATUS1_TOXIC_POISON))
++            flags |= 0x10;
++        if (itemEffects[3] & ITEM3_BURN && gBattleMons[battler].status1 & STATUS1_BURN)
++            flags |= 0x8;
++        if (itemEffects[3] & ITEM3_FREEZE && gBattleMons[battler].status1 & STATUS1_FREEZE)
++            flags |= 0x4;
++        if (itemEffects[3] & ITEM3_PARALYSIS && gBattleMons[battler].status1 & STATUS1_PARALYSIS)
++            flags |= 0x2;
++        if (itemEffects[3] & ITEM3_CONFUSION && gBattleMons[battler].status2 & STATUS2_CONFUSION)
++            flags |= 0x1;
++        if (flags != 0)
++            usable = TRUE;
++        break;
++    case AI_ITEM_X_STAT:
++        if (itemEffects[0] & ITEM0_X_ATTACK)
++            flags |= 0x1;
++        if (itemEffects[1] & ITEM1_X_DEFEND)
++            flags |= 0x2;
++        if (itemEffects[1] & ITEM1_X_SPEED)
++            flags |= 0x4;
++        if (itemEffects[2] & ITEM2_X_SPATK)
++            flags |= 0x8;
++        if (itemEffects[2] & ITEM2_X_ACCURACY)
++            flags |= 0x20;
++        if (itemEffects[0] & ITEM0_DIRE_HIT)
++            flags |= 0x80;
++        if (flags != 0)
++            usable = TRUE;
++        break;
++    case AI_ITEM_GUARD_SPECS:
++        if (gSideTimers[GetBattlerSide(battler)].mistTimer == 0)
++            usable = TRUE;
++        break;
++    }
++    *typeOut = type;
++    *flagsOut = flags;
++    return usable;
++}
++
++static u8 ResolveTarget(u8 battler, u16 move, u8 requested)
++{
++    u8 target = gBattleMoves[move].target;
++    u8 foe;
++
++    if (target & (MOVE_TARGET_USER_OR_SELECTED | MOVE_TARGET_USER))
++        return battler;
++    foe = GetBattlerAtPosition(B_POSITION_PLAYER_LEFT);
++    if (!(gBattleTypeFlags & BATTLE_TYPE_DOUBLE))
++        return foe;
++    if (target == MOVE_TARGET_SELECTED
++     && requested < gBattlersCount
++     && requested != battler
++     && !(gAbsentBattlerFlags & gBitTable[requested]))
++        return requested;
++    if (gAbsentBattlerFlags & gBitTable[foe])
++        foe = GetBattlerAtPosition(B_POSITION_PLAYER_RIGHT);
++    return foe;
++}
++
++static void FillBattlerInfo(struct RemoteBattlerInfo *info, u8 battler)
++{
++    s32 i;
++    struct BattlePokemon *mon = &gBattleMons[battler];
++
++    info->species = mon->species;
++    info->hp = mon->hp;
++    info->maxHP = mon->maxHP;
++    info->item = mon->item;
++    info->status1 = mon->status1;
++    info->status2 = mon->status2;
++    for (i = 0; i < MAX_MON_MOVES; i++)
++    {
++        info->moves[i] = mon->moves[i];
++        info->pp[i] = mon->pp[i];
++        info->maxPp[i] = CalculatePPWithBonus(mon->moves[i], mon->ppBonuses, i);
++    }
++    for (i = 0; i < NUM_BATTLE_STATS; i++)
++        info->statStages[i] = mon->statStages[i];
++    info->level = mon->level;
++    info->present = (gAbsentBattlerFlags & gBitTable[battler]) ? 0 : 1;
++    info->type1 = mon->type1;
++    info->type2 = mon->type2;
++    info->ability = mon->ability;
++    info->partyIndex = gBattlerPartyIndexes[battler];
++    info->lastMove = gLastMoves[battler];
++    CopyName(info->nickname, mon->nickname, sizeof(info->nickname));
++    info->status3 = gStatuses3[battler];
++}
++
++static void FillTrainerNames(struct RemoteControl *rc)
++{
++    u8 trainerClass;
++    u8 towerName[12];
++    s32 i;
++
++    for (i = 0; i < (s32)sizeof(rc->trainerName); i++)
++    {
++        rc->trainerName[i] = EOS;
++        rc->trainerClassName[i] = EOS;
++    }
++    if (gBattleTypeFlags & BATTLE_TYPE_TRAINER_TOWER)
++    {
++        for (i = 0; i < (s32)sizeof(towerName); i++)
++            towerName[i] = EOS;
++        GetTrainerTowerOpponentName(towerName);
++        CopyName(rc->trainerName, towerName, sizeof(rc->trainerName));
++        CopyName(rc->trainerClassName, gTrainerClassNames[GetTrainerTowerOpponentClass()], sizeof(rc->trainerClassName));
++        return;
++    }
++    if (gBattleTypeFlags & BATTLE_TYPE_EREADER_TRAINER)
++        return;
++    if (gTrainerBattleOpponent_A >= NUM_TRAINERS)
++        return;
++    trainerClass = gTrainers[gTrainerBattleOpponent_A].trainerClass;
++    CopyName(rc->trainerClassName, gTrainerClassNames[trainerClass], sizeof(rc->trainerClassName));
++    if (trainerClass == TRAINER_CLASS_RIVAL_EARLY
++     || trainerClass == TRAINER_CLASS_RIVAL_LATE
++     || trainerClass == TRAINER_CLASS_CHAMPION)
++        CopyName(rc->trainerName, gSaveBlock1Ptr->rivalName, sizeof(rc->trainerName));
++    else
++        CopyName(rc->trainerName, gTrainers[gTrainerBattleOpponent_A].trainerName, sizeof(rc->trainerName));
++}
++
++static void FillSnapshot(u8 battler)
++{
++    struct RemoteControl *rc = &gRemoteControl;
++    s32 i, j;
++    u8 type, flags;
++    u16 species;
++    u8 switchable;
++    u32 status;
++
++    rc->magic = REMOTE_MAGIC;
++    rc->version = REMOTE_VERSION;
++    rc->battleTypeFlags = gBattleTypeFlags;
++    rc->trainerId = gTrainerBattleOpponent_A;
++    rc->battlersCount = gBattlersCount;
++    rc->inBattle = TRUE;
++    rc->turn = gBattleResults.battleTurnCounter;
++    rc->absentFlags = gAbsentBattlerFlags;
++    rc->weather = gBattleWeather;
++    rc->sideStatuses[0] = gSideStatuses[0];
++    rc->sideStatuses[1] = gSideStatuses[1];
++    FillTrainerNames(rc);
++
++    for (i = 0; i < MAX_TRAINER_ITEMS; i++)
++        rc->trainerItems[i] = gBattleResources->battleHistory->trainerItems[i];
++
++    for (i = 0; i < MAX_BATTLERS_COUNT; i++)
++    {
++        if (i < gBattlersCount)
++        {
++            FillBattlerInfo(&rc->battlers[i], i);
++        }
++        else
++        {
++            rc->battlers[i].species = SPECIES_NONE;
++            rc->battlers[i].present = 0;
++        }
++    }
++
++    switchable = GetSwitchableMons(battler);
++    rc->switchableMons = switchable;
++    rc->canSwitch = RemoteCanSwitch(battler);
++    rc->unusableMoves = CheckMoveLimitations(battler, 0, 0xFF);
++    rc->itemUsable = 0;
++    for (i = 0; i < MAX_TRAINER_ITEMS; i++)
++        if (CheckTrainerItem(battler, i, &type, &flags))
++            rc->itemUsable |= 1 << i;
++
++    for (i = 0; i < PARTY_SIZE; i++)
++    {
++        struct RemoteMonInfo *info = &rc->party[i];
++        u8 ppBonuses;
++
++        species = GetMonData(&gEnemyParty[i], MON_DATA_SPECIES_OR_EGG);
++        info->species = GetMonData(&gEnemyParty[i], MON_DATA_SPECIES);
++        info->hp = GetMonData(&gEnemyParty[i], MON_DATA_HP);
++        info->maxHP = GetMonData(&gEnemyParty[i], MON_DATA_MAX_HP);
++        info->heldItem = GetMonData(&gEnemyParty[i], MON_DATA_HELD_ITEM);
++        info->status = GetMonData(&gEnemyParty[i], MON_DATA_STATUS);
++        info->level = GetMonData(&gEnemyParty[i], MON_DATA_LEVEL);
++        ppBonuses = GetMonData(&gEnemyParty[i], MON_DATA_PP_BONUSES);
++        for (j = 0; j < MAX_MON_MOVES; j++)
++        {
++            info->moves[j] = GetMonData(&gEnemyParty[i], MON_DATA_MOVE1 + j);
++            info->pp[j] = GetMonData(&gEnemyParty[i], MON_DATA_PP1 + j);
++            info->maxPp[j] = CalculatePPWithBonus(info->moves[j], ppBonuses, j);
++        }
++        for (j = 0; j < (s32)sizeof(info->nickname); j++)
++            info->nickname[j] = EOS;
++        if (species != SPECIES_NONE)
++            GetMonData(&gEnemyParty[i], MON_DATA_NICKNAME, info->nickname);
++        info->nickname[sizeof(info->nickname) - 1] = EOS;
++        info->flags = 0;
++        if (species != SPECIES_NONE)
++            info->flags |= 1;
++        for (j = 0; j < gBattlersCount; j++)
++            if (GetBattlerSide(j) == B_SIDE_OPPONENT && gBattlerPartyIndexes[j] == i
++             && !(gAbsentBattlerFlags & gBitTable[j]))
++                info->flags |= 2;
++        if (switchable & (1 << i))
++            info->flags |= 4;
++        if (species == SPECIES_EGG)
++            info->flags |= 8;
++    }
++
++    for (i = 0; i < PARTY_SIZE; i++)
++    {
++        species = GetMonData(&gPlayerParty[i], MON_DATA_SPECIES_OR_EGG);
++        if (species == SPECIES_NONE || species == SPECIES_EGG)
++            rc->playerPartyStatus[i] = 0;
++        else if (GetMonData(&gPlayerParty[i], MON_DATA_HP) == 0)
++            rc->playerPartyStatus[i] = 3;
++        else
++        {
++            status = GetMonData(&gPlayerParty[i], MON_DATA_STATUS);
++            rc->playerPartyStatus[i] = status != 0 ? 2 : 1;
++        }
++    }
++}
++
++static void PostRequest(u8 battler, u8 type)
++{
++    struct RemoteControl *rc = &gRemoteControl;
++
++    FillSnapshot(battler);
++    rc->reqBattler = battler;
++    rc->reqSeq++;
++    if (rc->reqSeq == rc->respSeq)
++        rc->reqSeq++;
++    rc->reqType = type;
++}
++
++void RemoteControl_InitBattler(u8 battler)
++{
++    struct RemoteControl *rc = &gRemoteControl;
++
++    if (battler < MAX_BATTLERS_COUNT)
++    {
++        sRemoteWant[battler] = REMOTE_REQ_NONE;
++        sRemotePendingMove[battler] = NO_PENDING_MOVE;
++        sRemotePendingTarget[battler] = 0;
++        sRemoteAiTurn[battler] = FALSE;
++    }
++    rc->magic = REMOTE_MAGIC;
++    rc->version = REMOTE_VERSION;
++    rc->reqType = REMOTE_REQ_NONE;
++    rc->respSeq = rc->reqSeq;
++    rc->lastError = REMOTE_ERR_NONE;
++    rc->inBattle = TRUE;
++    rc->padding[0] = gRemoteControlSignature[0];
++}
++
++void RemoteControl_EndBattle(void)
++{
++    gRemoteControl.reqType = REMOTE_REQ_NONE;
++    gRemoteControl.inBattle = FALSE;
++}
++
++void RemoteControl_BeginRequest(u8 battler, u8 type)
++{
++    if (type == REMOTE_REQ_ACTION)
++    {
++        sRemotePendingMove[battler] = NO_PENDING_MOVE;
++        sRemoteAiTurn[battler] = FALSE;
++    }
++    sRemoteWant[battler] = type;
++}
++
++bool8 RemoteControl_TakeAiTurn(u8 battler)
++{
++    if (sRemoteAiTurn[battler])
++    {
++        sRemoteAiTurn[battler] = FALSE;
++        return TRUE;
++    }
++    return FALSE;
++}
++
++bool8 RemoteControl_TakePendingMove(u8 battler)
++{
++    u8 slot = sRemotePendingMove[battler];
++    u8 unusable;
++
++    if (slot == NO_PENDING_MOVE)
++        return FALSE;
++    sRemotePendingMove[battler] = NO_PENDING_MOVE;
++    unusable = CheckMoveLimitations(battler, 0, 0xFF);
++    if (slot >= MAX_MON_MOVES || (unusable & gBitTable[slot]))
++        return FALSE; // something changed: ask again
++    BtlController_EmitTwoReturnValues(1, 10, slot | (sRemotePendingTarget[battler] << 8));
++    return TRUE;
++}
++
++static u8 ApplyMove(u8 battler, u8 reqType, u8 slot, u8 requestedTarget)
++{
++    u8 unusable = CheckMoveLimitations(battler, 0, 0xFF);
++    u8 target;
++
++    if (unusable == 0xF)
++    {
++        // Every move is blocked: the engine will make it use Struggle.
++        if (reqType == REMOTE_REQ_ACTION)
++        {
++            BtlController_EmitTwoReturnValues(1, B_ACTION_USE_MOVE, ResolveTarget(battler, MOVE_STRUGGLE, requestedTarget) << 8);
++            return REMOTE_ERR_NONE;
++        }
++        slot = 0;
++    }
++    else
++    {
++        if (slot >= MAX_MON_MOVES || gBattleMons[battler].moves[slot] == MOVE_NONE)
++            return REMOTE_ERR_BAD_MOVE;
++        if (unusable & gBitTable[slot])
++            return REMOTE_ERR_MOVE_BLOCKED;
++    }
++    target = ResolveTarget(battler, gBattleMons[battler].moves[slot], requestedTarget);
++    if (reqType == REMOTE_REQ_ACTION)
++    {
++        sRemotePendingMove[battler] = slot;
++        sRemotePendingTarget[battler] = target;
++        BtlController_EmitTwoReturnValues(1, B_ACTION_USE_MOVE, target << 8);
++    }
++    else
++    {
++        BtlController_EmitTwoReturnValues(1, 10, slot | (target << 8));
++    }
++    return REMOTE_ERR_NONE;
++}
++
++static u8 ApplyItem(u8 battler, u8 slot)
++{
++    u8 type, flags;
++
++    if (!CheckTrainerItem(battler, slot, &type, &flags))
++        return REMOTE_ERR_BAD_ITEM;
++    gBattleStruct->AI_itemType[battler / 2] = type;
++    gBattleStruct->AI_itemFlags[battler / 2] = flags;
++    *(gBattleStruct->chosenItem + (battler / 2) * 2) = gBattleResources->battleHistory->trainerItems[slot];
++    gBattleResources->battleHistory->trainerItems[slot] = ITEM_NONE;
++    BtlController_EmitTwoReturnValues(1, B_ACTION_USE_ITEM, 0);
++    return REMOTE_ERR_NONE;
++}
++
++static u8 ApplySwitch(u8 battler, u8 reqType, u8 partyIdx)
++{
++    if (partyIdx >= PARTY_SIZE || !(GetSwitchableMons(battler) & (1 << partyIdx)))
++        return REMOTE_ERR_BAD_SWITCH;
++    if (reqType == REMOTE_REQ_ACTION)
++    {
++        if (!RemoteCanSwitch(battler))
++            return REMOTE_ERR_TRAPPED;
++        BtlController_EmitTwoReturnValues(1, B_ACTION_SWITCH, 0);
++        gBattleStruct->AI_monToSwitchIntoId[GetBattlerPosition(battler) >> 1] = partyIdx;
++        gBattleStruct->monToSwitchIntoId[battler] = partyIdx;
++    }
++    else
++    {
++        gBattleStruct->monToSwitchIntoId[battler] = partyIdx;
++        BtlController_EmitChosenMonReturnValue(1, partyIdx, NULL);
++    }
++    return REMOTE_ERR_NONE;
++}
++
++u8 RemoteControl_Poll(u8 battler)
++{
++    struct RemoteControl *rc = &gRemoteControl;
++    u8 reqType, err;
++
++    if (sRemoteWant[battler] == REMOTE_REQ_NONE)
++        return REMOTE_RESULT_USE_AI; // should not happen
++    if (rc->reqType == REMOTE_REQ_NONE)
++    {
++        rc->lastError = REMOTE_ERR_NONE;
++        PostRequest(battler, sRemoteWant[battler]);
++        return REMOTE_RESULT_WAIT;
++    }
++    if (rc->reqBattler != battler || rc->respSeq != rc->reqSeq)
++        return REMOTE_RESULT_WAIT;
++
++    reqType = rc->reqType;
++    err = REMOTE_ERR_BAD_TYPE;
++    switch (rc->respType)
++    {
++    case REMOTE_RESP_AI:
++        rc->reqType = REMOTE_REQ_NONE;
++        rc->lastError = REMOTE_ERR_NONE;
++        sRemoteWant[battler] = REMOTE_REQ_NONE;
++        if (reqType == REMOTE_REQ_ACTION)
++            sRemoteAiTurn[battler] = TRUE;
++        return REMOTE_RESULT_USE_AI;
++    case REMOTE_RESP_MOVE:
++        if (reqType == REMOTE_REQ_ACTION || reqType == REMOTE_REQ_MOVE)
++            err = ApplyMove(battler, reqType, rc->respArg1, rc->respArg2);
++        break;
++    case REMOTE_RESP_ITEM:
++        if (reqType == REMOTE_REQ_ACTION)
++            err = ApplyItem(battler, rc->respArg1);
++        break;
++    case REMOTE_RESP_SWITCH:
++        if (reqType == REMOTE_REQ_ACTION || reqType == REMOTE_REQ_SWITCH_IN)
++            err = ApplySwitch(battler, reqType, rc->respArg1);
++        break;
++    }
++
++    if (err != REMOTE_ERR_NONE)
++    {
++        // Rejected: post the same request again with the error code.
++        PostRequest(battler, reqType);
++        rc->lastError = err;
++        return REMOTE_RESULT_WAIT;
++    }
++    rc->reqType = REMOTE_REQ_NONE;
++    rc->lastError = REMOTE_ERR_NONE;
++    sRemoteWant[battler] = REMOTE_REQ_NONE;
++    return REMOTE_RESULT_DONE;
++}
++
++#ifdef REMOTE_TEST_BOOT
++// Test-only entry point: boots straight into trainer battles so the remote
++// protocol can be exercised in a headless emulator. Never in release builds.
++#include "battle_main.h"
++#include "new_game.h"
++#include "save.h"
++#include "main.h"
++#include "constants/species.h"
++
++static EWRAM_DATA u8 sTestBattleNum = 0;
++
++void CB2_RemoteTestBoot(void)
++{
++    ResetMenuAndMonGlobals();
++    Save_ResetSaveCounters();
++    Sav2_ClearSetDefault();
++    // "RED" in the game charset, properly terminated
++    gSaveBlock2Ptr->playerName[0] = 0xCC;
++    gSaveBlock2Ptr->playerName[1] = 0xBF;
++    gSaveBlock2Ptr->playerName[2] = 0xBE;
++    gSaveBlock2Ptr->playerName[3] = EOS;
++    gSaveBlock1Ptr->rivalName[0] = 0xC1; // "G"
++    gSaveBlock1Ptr->rivalName[1] = EOS;
++    gSaveBlock2Ptr->optionsBattleStyle = OPTIONS_BATTLE_STYLE_SET;
++    gSaveBlock2Ptr->optionsTextSpeed = OPTIONS_TEXT_SPEED_FAST;
++    gSaveBlock2Ptr->optionsBattleSceneOff = TRUE;
++    ZeroPlayerPartyMons();
++    CreateMon(&gPlayerParty[0], SPECIES_MEWTWO, 100, 31, FALSE, 0, OT_ID_PLAYER_ID, 0);
++    CreateMon(&gPlayerParty[1], SPECIES_PIKACHU, 100, 31, FALSE, 0, OT_ID_PLAYER_ID, 0);
++    {
++        s32 i, j;
++        for (i = 0; i < 2; i++)
++        {
++            SetMonMoveSlot(&gPlayerParty[i], MOVE_SCRATCH, 0);
++            for (j = 1; j < MAX_MON_MOVES; j++)
++                SetMonMoveSlot(&gPlayerParty[i], MOVE_NONE, j);
++            j = 999;
++            SetMonData(&gPlayerParty[i], MON_DATA_MAX_HP, &j);
++            SetMonData(&gPlayerParty[i], MON_DATA_HP, &j);
++        }
++    }
++    CalculatePlayerPartyCount();
++    if ((sTestBattleNum++ & 1) == 0)
++    {
++        gTrainerBattleOpponent_A = TRAINER_LEADER_GIOVANNI;
++        gBattleTypeFlags = BATTLE_TYPE_TRAINER;
++    }
++    else
++    {
++        gTrainerBattleOpponent_A = TRAINER_TWINS_ELI_ANNE;
++        gBattleTypeFlags = BATTLE_TYPE_TRAINER | BATTLE_TYPE_DOUBLE;
++    }
++    gMain.savedCallback = CB2_RemoteTestBoot;
++    SetMainCallback2(CB2_InitBattle);
++}
++#endif
+diff --git a/src/main.c b/src/main.c
+index 542b0f5d1..1cbd6f018 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -228,7 +228,14 @@ static void InitMainCallbacks(void)
+     gMain.vblankCounter1 = 0;
+     gMain.vblankCounter2 = 0;
+     gMain.callback1 = NULL;
++#ifdef REMOTE_TEST_BOOT
++    {
++        extern void CB2_RemoteTestBoot(void);
++        SetMainCallback2(CB2_RemoteTestBoot);
++    }
++#else
+     SetMainCallback2(CB2_InitCopyrightScreenAfterBootup);
++#endif
+     gSaveBlock2Ptr = &gSaveBlock2;
+     gSaveBlock1Ptr = &gSaveBlock1;
+     gSaveBlock2.encryptionKey = 0;

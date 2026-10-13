@@ -1,0 +1,494 @@
+-- ===========================================================================
+--  RIVAL AT THE WHEEL - script for mGBA (0.10 or newer)
+--  Pokemon FireRed (USA) with the "Rival at the Wheel" patch.
+--
+--  Load this file in mGBA:  Tools > Scripting... > File > Load script
+--  The second player opens the web page shown in the console and enters
+--  the code. On the trainer's turn, the game waits for their choice.
+-- ===========================================================================
+
+-- -------------------------------- SETTINGS ---------------------------------
+local PORT = 8888           -- web server port (change it if it's already in use)
+local CODE = nil            -- e.g. "PIKA42" for a fixed code; nil = random
+local LOCAL_ONLY = true     -- true: only the tunnel / this PC can connect. false: also other devices on your LAN
+local AUTO_AI = false       -- true: start with the AI in control (player 2 can take over from the page)
+-- ---------------------------------------------------------------------------
+
+local SIGNATURE = "REMOTE-TRAINER-1"
+local MAILBOX_SIZE = 0x258
+local REMOTE_MAGIC = 0x4C544352
+
+-- Addresses generated automatically for each patch build
+local BUILDS = {
+--[[BUILDS]]
+}
+
+-- Game character table (byte -> text)
+local CHARMAP = {
+--[[CHARMAP]]
+}
+
+local HTML = [==========[
+--[[HTML]]
+]==========]
+
+-- ---------------------------------------------------------------------------
+local build = nil
+local server = nil
+local clients = {}
+local autoAI = AUTO_AI
+local lastSeq = -1
+local lastP2Seen = 0
+local p2Announced = false
+local nextClientId = 1
+
+local function log(msg) console:log("[Rival at the Wheel] " .. msg) end
+local function logError(msg) console:error("[Rival at the Wheel] " .. msg) end
+
+local function randomCode()
+  local chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+  math.randomseed(os.time() + math.floor(os.clock() * 100000))
+  local out = {}
+  for i = 1, 6 do
+    local n = math.random(1, #chars)
+    out[i] = chars:sub(n, n)
+  end
+  return table.concat(out)
+end
+
+if CODE == nil or CODE == "" then CODE = randomCode() end
+CODE = string.upper(CODE)
+
+-- ------------------------------ JSON ---------------------------------------
+local ARRAY = {}
+local function arr(t) return setmetatable(t or {}, ARRAY) end
+
+local function jsonString(s)
+  s = s:gsub('[%c"\\]', function(c)
+    if c == '"' then return '\\"' end
+    if c == '\\' then return '\\\\' end
+    if c == '\n' then return '\\n' end
+    return string.format('\\u%04x', c:byte())
+  end)
+  return '"' .. s .. '"'
+end
+
+local function toJson(v)
+  local t = type(v)
+  if t == "nil" then return "null" end
+  if t == "boolean" then return v and "true" or "false" end
+  if t == "number" then
+    if v ~= v or v == math.huge or v == -math.huge then return "null" end
+    if math.type(v) == "integer" then return tostring(v) end
+    return string.format("%.4f", v)
+  end
+  if t == "string" then return jsonString(v) end
+  if t == "table" then
+    local parts = {}
+    if getmetatable(v) == ARRAY or v[1] ~= nil then
+      for i = 1, #v do parts[#parts + 1] = toJson(v[i]) end
+      return "[" .. table.concat(parts, ",") .. "]"
+    end
+    for k, val in pairs(v) do
+      parts[#parts + 1] = jsonString(tostring(k)) .. ":" .. toJson(val)
+    end
+    return "{" .. table.concat(parts, ",") .. "}"
+  end
+  return "null"
+end
+
+-- ------------------------------ GAME MEMORY --------------------------------
+local function detectBuild()
+  if not emu then return nil end
+  for _, b in ipairs(BUILDS) do
+    local ok, s = pcall(function() return emu:readRange(b.sig, #SIGNATURE) end)
+    if ok and s == SIGNATURE then return b end
+  end
+  return nil
+end
+
+local function u8(s, o) return s:byte(o + 1) end
+local function u16(s, o) return (string.unpack("<I2", s, o + 1)) end
+local function u32(s, o) return (string.unpack("<I4", s, o + 1)) end
+local function s8(s, o) return (string.unpack("<i1", s, o + 1)) end
+
+local function decodeText(s, o, n)
+  local out = {}
+  for i = 0, n - 1 do
+    local b = s:byte(o + i + 1)
+    if b == nil or b == 0xFF then break end
+    out[#out + 1] = CHARMAP[b] or "?"
+  end
+  return (table.concat(out):gsub("%s+$", ""))
+end
+
+local function readMailbox()
+  if not build then return nil end
+  local ok, s = pcall(function() return emu:readRange(build.rc, MAILBOX_SIZE) end)
+  if not ok or not s or #s < MAILBOX_SIZE then return nil end
+  if u32(s, 0) ~= REMOTE_MAGIC then return nil end
+  return s
+end
+
+local function list4(s, o, size, reader)
+  local t = arr()
+  for i = 0, 3 do t[#t + 1] = reader(s, o + i * size) end
+  return t
+end
+
+local function parseState(s)
+  local st = {}
+  st.reqSeq = u8(s, 0x04)
+  st.reqType = u8(s, 0x05)
+  st.reqBattler = u8(s, 0x06)
+  st.respSeq = u8(s, 0x07)
+  st.lastError = u8(s, 0x0B)
+  st.battleType = u32(s, 0x0C)
+  st.trainerId = u16(s, 0x10)
+  st.battlersCount = u8(s, 0x12)
+  st.inBattle = u8(s, 0x13) ~= 0
+  st.trainerItems = list4(s, 0x14, 2, u16)
+  st.trainerClass = decodeText(s, 0x1C, 14)
+  st.trainerName = decodeText(s, 0x2A, 14)
+  st.unusableMoves = u8(s, 0x38)
+  st.canSwitch = u8(s, 0x39) ~= 0
+  st.itemUsable = u8(s, 0x3A)
+  st.switchable = u8(s, 0x3B)
+  st.turn = u8(s, 0x3C)
+  st.absent = u8(s, 0x3D)
+  st.weather = u16(s, 0x3E)
+  st.sides = arr({ u16(s, 0x40), u16(s, 0x42) })
+
+  st.battlers = arr()
+  for i = 0, 3 do
+    local o = 0x48 + i * 0x40
+    local species = u16(s, o)
+    if i < st.battlersCount and species ~= 0 then
+      local isFoe = (i % 2) == 1
+      local b = {
+        id = i,
+        foe = isFoe,
+        species = species,
+        nickname = decodeText(s, o + 0x30, 12),
+        level = u8(s, o + 0x28),
+        present = u8(s, o + 0x29) ~= 0,
+        types = arr({ u8(s, o + 0x2A), u8(s, o + 0x2B) }),
+        status1 = u32(s, o + 0x08),
+        status2 = u32(s, o + 0x0C),
+        status3 = u32(s, o + 0x3C),
+        lastMove = u16(s, o + 0x2E),
+        stages = arr(),
+      }
+      for k = 0, 7 do b.stages[#b.stages + 1] = s8(s, o + 0x20 + k) end
+      local hp, maxHP = u16(s, o + 0x02), u16(s, o + 0x04)
+      if isFoe then
+        b.hp = hp
+        b.maxHP = maxHP
+        b.item = u16(s, o + 0x06)
+        b.ability = u8(s, o + 0x2C)
+        b.partyIndex = u8(s, o + 0x2D)
+        b.moves = list4(s, o + 0x10, 2, u16)
+        b.pp = list4(s, o + 0x18, 1, u8)
+        b.maxPp = list4(s, o + 0x1C, 1, u8)
+      else
+        -- For player 1, only what the game itself would show
+        b.hpPct = maxHP > 0 and math.floor(hp * 100 / maxHP + 0.5) or 0
+        if hp > 0 and b.hpPct == 0 then b.hpPct = 1 end
+      end
+      st.battlers[#st.battlers + 1] = b
+    end
+  end
+
+  st.party = arr()
+  for i = 0, 5 do
+    local o = 0x148 + i * 0x2C
+    local flags = u8(s, o + 0x19)
+    if (flags & 1) ~= 0 then
+      st.party[#st.party + 1] = {
+        slot = i,
+        species = u16(s, o),
+        nickname = decodeText(s, o + 0x1A, 12),
+        hp = u16(s, o + 0x02),
+        maxHP = u16(s, o + 0x04),
+        item = u16(s, o + 0x06),
+        status = u32(s, o + 0x08),
+        moves = list4(s, o + 0x0C, 2, u16),
+        pp = list4(s, o + 0x14, 1, u8),
+        maxPp = list4(s, o + 0x26, 1, u8),
+        level = u8(s, o + 0x18),
+        onField = (flags & 2) ~= 0,
+        canSend = (flags & 4) ~= 0,
+        egg = (flags & 8) ~= 0,
+      }
+    end
+  end
+
+  st.playerParty = arr()
+  for i = 0, 5 do st.playerParty[#st.playerParty + 1] = u8(s, 0x250 + i) end
+  return st
+end
+
+local function writeResponse(seq, rtype, a1, a2)
+  local s = readMailbox()
+  if not s then return false, "No battle in progress" end
+  local reqSeq, reqType = u8(s, 0x04), u8(s, 0x05)
+  if reqType == 0 then return false, "It's not your turn" end
+  if reqSeq ~= seq then return false, "Request expired, try again" end
+  if u8(s, 0x07) == reqSeq then return false, "Choice already sent" end
+  emu:write8(build.rc + 0x08, rtype)
+  emu:write8(build.rc + 0x09, a1 & 0xFF)
+  emu:write8(build.rc + 0x0A, a2 & 0xFF)
+  emu:write8(build.rc + 0x07, reqSeq)
+  return true
+end
+
+-- ------------------------------- WEB SERVER ---------------------------------
+local STATUS_TEXT = { [200] = "OK", [400] = "Bad Request", [401] = "Unauthorized", [404] = "Not Found" }
+
+local function httpResponse(code, ctype, body)
+  return table.concat({
+    "HTTP/1.1 ", code, " ", STATUS_TEXT[code] or "OK", "\r\n",
+    "Content-Type: ", ctype, "\r\n",
+    "Content-Length: ", #body, "\r\n",
+    "Cache-Control: no-store\r\n",
+    "Connection: close\r\n\r\n",
+    body,
+  })
+end
+
+local function jsonResponse(code, t) return httpResponse(code, "application/json; charset=utf-8", toJson(t)) end
+
+local function parseQuery(q)
+  local t = {}
+  for k, v in string.gmatch(q or "", "([^&=]+)=([^&]*)") do
+    v = v:gsub("+", " "):gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end)
+    t[k] = v
+  end
+  return t
+end
+
+local function buildState()
+  local st = { ok = true, auto = autoAI, version = 1 }
+  if not emu then
+    st.game = "none"
+    return st
+  end
+  if not build then build = detectBuild() end
+  if not build then
+    st.game = "wrong"
+    return st
+  end
+  st.game = build.name
+  local s = readMailbox()
+  if not s then
+    st.inBattle = false
+    return st
+  end
+  local parsed = parseState(s)
+  for k, v in pairs(parsed) do st[k] = v end
+  if parsed.reqType ~= 0 and parsed.respSeq == parsed.reqSeq then
+    st.reqType = 0 -- answer already sent, being processed
+  end
+  return st
+end
+
+local function handleRequest(method, path, body)
+  local route, query = path:match("^([^?]*)%??(.*)$")
+  local q = parseQuery(query)
+  if route == "/" or route == "/index.html" then
+    return httpResponse(200, "text/html; charset=utf-8", HTML)
+  end
+  if route == "/favicon.ico" then
+    return httpResponse(404, "text/plain", "")
+  end
+  if route:sub(1, 5) == "/api/" then
+    local key = string.upper(q.k or "")
+    if key ~= CODE then
+      return jsonResponse(401, { ok = false, error = "Wrong code" })
+    end
+    lastP2Seen = os.time()
+    if not p2Announced then
+      p2Announced = true
+      log("Player 2 has connected!")
+    end
+    if route == "/api/state" then
+      return jsonResponse(200, buildState())
+    end
+    if route == "/api/choose" and method == "POST" then
+      local f = parseQuery(body)
+      local seq, rtype = tonumber(f.seq), tonumber(f.type)
+      local a1, a2 = tonumber(f.a1) or 0, tonumber(f.a2) or 0
+      if not seq or not rtype or rtype < 1 or rtype > 4 then
+        return jsonResponse(400, { ok = false, error = "Invalid request" })
+      end
+      if not build then return jsonResponse(200, { ok = false, error = "Game not ready" }) end
+      local ok, err = writeResponse(seq, rtype, a1, a2)
+      return jsonResponse(200, { ok = ok, error = err })
+    end
+    if route == "/api/auto" and method == "POST" then
+      local f = parseQuery(body)
+      autoAI = f.on == "1"
+      log(autoAI and "Auto AI turned ON by player 2" or "Auto AI turned off: player 2 decides")
+      return jsonResponse(200, { ok = true, auto = autoAI })
+    end
+  end
+  return httpResponse(404, "text/plain; charset=utf-8", "Page not found")
+end
+
+local function closeClient(c)
+  if clients[c.id] then
+    clients[c.id] = nil
+    pcall(function() c.sock:close() end)
+  end
+end
+
+local function tryHandle(c)
+  if c.out then return end
+  local headerEnd = c.buf:find("\r\n\r\n", 1, true)
+  if not headerEnd then
+    if #c.buf > 16384 then closeClient(c) end
+    return
+  end
+  local header = c.buf:sub(1, headerEnd - 1)
+  local method, path = header:match("^(%u+)%s+(%S+)")
+  if not method then closeClient(c); return end
+  local len = tonumber(header:match("[Cc]ontent%-[Ll]ength:%s*(%d+)")) or 0
+  if len > 4096 then closeClient(c); return end
+  local body = c.buf:sub(headerEnd + 4)
+  if #body < len then return end
+  body = body:sub(1, len)
+  local ok, resp = pcall(handleRequest, method, path, body)
+  if not ok then
+    logError("internal error: " .. tostring(resp))
+    resp = httpResponse(400, "text/plain", "Error")
+  end
+  c.out = resp
+end
+
+local function onClientData(c)
+  while clients[c.id] do
+    local data, err = c.sock:receive(4096)
+    if data then
+      c.buf = c.buf .. data
+      c.last = os.time()
+    else
+      if err ~= socket.ERRORS.AGAIN then
+        if not c.out then closeClient(c) end
+      end
+      break
+    end
+  end
+  if clients[c.id] then tryHandle(c) end
+end
+
+local function flushClients()
+  local now = os.time()
+  for _, c in pairs(clients) do
+    if c.out then
+      if #c.out == 0 then
+        closeClient(c)
+      else
+        local n, err = c.sock:send(c.out)
+        if n and n > 0 then
+          c.out = c.out:sub(n + 1)
+          c.last = now
+          if #c.out == 0 then closeClient(c) end
+        elseif err and err ~= socket.ERRORS.AGAIN then
+          closeClient(c)
+        end
+      end
+    end
+    if clients[c.id] and now - c.last > 15 then closeClient(c) end
+  end
+end
+
+local function onAccept()
+  while true do
+    local sock, err = server:accept()
+    if not sock then return end
+    local c = { id = nextClientId, sock = sock, buf = "", last = os.time() }
+    nextClientId = nextClientId + 1
+    clients[c.id] = c
+    sock:add("received", function() onClientData(c) end)
+    sock:add("error", function() closeClient(c) end)
+  end
+end
+
+local function startServer()
+  local port = PORT
+  for attempt = 0, 10 do
+    local s, err = socket.bind(LOCAL_ONLY and "127.0.0.1" or nil, port + attempt)
+    if s then
+      local ok, lerr = s:listen(16)
+      if ok then
+        server = s
+        server:add("received", onAccept)
+        return port + attempt
+      end
+      s:close()
+      logError("listen failed on port " .. (port + attempt) .. ": " .. tostring(lerr))
+    elseif err ~= socket.ERRORS.ADDRESS_IN_USE then
+      logError("cannot open port " .. (port + attempt) .. ": " .. tostring(err))
+      return nil
+    end
+  end
+  return nil
+end
+
+-- ------------------------------- MAIN LOOP ----------------------------------
+local REQ_NAMES = { [1] = "choosing an action", [2] = "choosing a move", [3] = "choosing the next Pokemon" }
+
+local function onFrame()
+  flushClients()
+  if not emu then return end
+  if not build then
+    build = detectBuild()
+    if build then log("Patch detected: " .. build.name) end
+    return
+  end
+  local s = readMailbox()
+  if not s then return end
+  local reqSeq, reqType, respSeq = u8(s, 0x04), u8(s, 0x05), u8(s, 0x07)
+  if reqType ~= 0 and respSeq ~= reqSeq then
+    if autoAI then
+      writeResponse(reqSeq, 4, 0, 0)
+      return
+    end
+    if reqSeq ~= lastSeq then
+      lastSeq = reqSeq
+      local err = u8(s, 0x0B)
+      if err ~= 0 then
+        log("Invalid choice, player 2 must try again (" .. (REQ_NAMES[reqType] or "?") .. ")")
+      else
+        log("Waiting for player 2: " .. (REQ_NAMES[reqType] or "?"))
+      end
+    end
+  end
+end
+
+local function onStart()
+  build = detectBuild()
+  if build then
+    log("Patch detected: " .. build.name)
+  elseif emu then
+    logError("This ROM doesn't have the Rival at the Wheel patch (or it's a different build).")
+  end
+end
+
+local port = startServer()
+console:log("==============================================")
+console:log("           RIVAL AT THE WHEEL - mGBA")
+console:log("==============================================")
+if port then
+  log("Server started on port " .. port)
+  log("CODE for player 2:  " .. CODE)
+  log("Test locally:  http://localhost:" .. port .. "/?k=" .. CODE)
+  log("For internet play, run the tunnel (start_tunnel.bat) and send player 2")
+  log("the https://....trycloudflare.com link together with the code.")
+else
+  logError("Couldn't start the web server. Change PORT at the top of the script.")
+end
+
+callbacks:add("frame", onFrame)
+callbacks:add("start", onStart)
+if emu then onStart() end

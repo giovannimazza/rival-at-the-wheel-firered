@@ -1,0 +1,5 @@
+*.gba
+*.sav
+*.ss[0-9]
+dump.bin
+__pycache__/

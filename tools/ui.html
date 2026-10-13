@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14161c">
+<title>Rival at the Wheel</title>
+<style>
+:root {
+  --bg: #14161c; --panel: #1d2029; --panel2: #262a35; --line: #333847;
+  --text: #eceef3; --muted: #9aa1b2; --accent: #ffcb05; --danger: #ff5a5f;
+  --ok: #46d17d; --warn: #ffb547; --blue: #4ea8ff;
+  --radius: 14px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+body { padding: 0 0 120px; }
+button { font: inherit; color: inherit; }
+.wrap { max-width: 760px; margin: 0 auto; padding: 0 16px; }
+header { position: sticky; top: 0; z-index: 5; background: rgba(20,22,28,.94);
+  backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+header .wrap { display: flex; align-items: center; gap: 10px; min-height: 56px; }
+.logo { font-weight: 800; letter-spacing: .5px; font-size: 16px; white-space: nowrap; }
+.logo span { color: var(--accent); }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.dot.off { background: var(--danger); }
+.spacer { flex: 1; }
+.toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; }
+.toggle input { display: none; }
+.toggle .sw { width: 38px; height: 22px; border-radius: 11px; background: var(--panel2); border: 1px solid var(--line); position: relative; transition: .2s; }
+.toggle .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--muted); transition: .2s; }
+.toggle input:checked + .sw { background: #3a3215; border-color: var(--accent); }
+.toggle input:checked + .sw::after { left: 18px; background: var(--accent); }
+
+.banner { margin: 16px 0; padding: 16px 18px; border-radius: var(--radius); background: var(--panel);
+  border: 1px solid var(--line); display: flex; gap: 14px; align-items: center; }
+.banner .big { font-size: 19px; font-weight: 800; }
+.banner .small { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.banner.turn { background: linear-gradient(135deg, #3d3410, #2a2412); border-color: var(--accent); animation: glow 1.6s ease-in-out infinite; }
+.banner.turn .big { color: var(--accent); }
+.banner.err { border-color: var(--danger); background: #2b1719; }
+@keyframes glow { 50% { box-shadow: 0 0 0 4px rgba(255,203,5,.15); } }
+.icon { font-size: 26px; width: 34px; text-align: center; flex: none; }
+
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); margin: 22px 0 8px; font-weight: 700; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+.grid2 { display: grid; grid-template-columns: 1fr; gap: 10px; }
+@media (min-width: 600px) { .grid2 { grid-template-columns: 1fr 1fr; } }
+
+.mon { display: flex; flex-direction: column; gap: 6px; }
+.mon.dim { opacity: .45; }
+.mon .top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.mon .name { font-weight: 800; font-size: 16px; }
+.mon .lv { color: var(--muted); font-size: 13px; }
+.mon .tag { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
+.hp { height: 8px; background: #0e1015; border-radius: 4px; overflow: hidden; }
+.hp > i { display: block; height: 100%; background: var(--ok); border-radius: 4px; transition: width .4s; }
+.hp > i.mid { background: var(--warn); } .hp > i.low { background: var(--danger); }
+.hptext { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.type { font-size: 10.5px; font-weight: 800; letter-spacing: .4px; padding: 2px 7px; border-radius: 5px; color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,.35); }
+.st { font-size: 10.5px; font-weight: 800; padding: 2px 7px; border-radius: 5px; background: #444; color: #fff; }
+.st.psn { background: #a040a0; } .st.brn { background: #f08030; } .st.frz { background: #6ac6e8; color: #111; }
+.st.par { background: #e0c020; color: #111; } .st.slp { background: #8a8a9a; } .st.tox { background: #702a8a; } .st.fnt { background: #3a3a3a; color: #bbb; }
+.st.misc { background: #2f3646; color: #cdd3e1; }
+.stage { font-size: 11px; padding: 1px 6px; border-radius: 5px; background: #23324a; color: #9cc8ff; }
+.stage.neg { background: #4a2328; color: #ffaab0; }
+.meta { font-size: 12px; color: var(--muted); }
+
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.choice { text-align: left; background: var(--panel2); border: 2px solid transparent; border-radius: 12px; padding: 10px 12px;
+  cursor: pointer; min-height: 64px; display: flex; flex-direction: column; gap: 4px; transition: transform .08s, border-color .15s; }
+.choice:active { transform: scale(.98); }
+.choice .t { font-weight: 800; font-size: 15px; }
+.choice .s { font-size: 12px; color: var(--muted); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.choice.sel { border-color: var(--accent); background: #34301c; }
+.choice:disabled { opacity: .35; cursor: not-allowed; }
+.choice.wide { grid-column: 1 / -1; }
+.eff { font-size: 10.5px; font-weight: 800; padding: 1px 6px; border-radius: 5px; }
+.eff.x2 { background: #1f4d2e; color: #7dffa6; } .eff.x4 { background: #145c2c; color: #a6ffc2; }
+.eff.half { background: #4d3a1f; color: #ffc777; } .eff.zero { background: #4d1f22; color: #ff9da1; }
+.tabs { display: flex; gap: 6px; margin: 4px 0 10px; overflow-x: auto; }
+.tabs button { background: var(--panel2); border: 1px solid var(--line); border-radius: 20px; padding: 7px 14px; cursor: pointer; white-space: nowrap; font-weight: 700; font-size: 13px; }
+.tabs button.on { background: var(--accent); color: #1a1600; border-color: var(--accent); }
+.note { font-size: 12.5px; color: var(--muted); margin: 8px 2px 0; }
+.ai-btn { width: 100%; margin-top: 10px; background: transparent; border: 1px dashed #4a5064; color: var(--muted); border-radius: 12px; padding: 11px; cursor: pointer; font-weight: 700; }
+.ai-btn.sel { border-style: solid; border-color: var(--accent); color: var(--accent); }
+
+.confirm { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: rgba(20,22,28,.97);
+  border-top: 1px solid var(--line); padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); transform: translateY(110%); visibility: hidden; transition: transform .2s, visibility .2s; }
+.confirm.show { transform: none; visibility: visible; }
+.confirm .wrap { display: flex; gap: 10px; align-items: center; padding: 0; }
+.confirm .what { flex: 1; font-size: 14px; } .confirm .what b { color: var(--accent); }
+.btn { border: 0; border-radius: 12px; padding: 13px 20px; font-weight: 800; cursor: pointer; }
+.btn.go { background: var(--accent); color: #1a1600; } .btn.no { background: var(--panel2); }
+.btn:disabled { opacity: .5; }
+
+.party { display: flex; flex-direction: column; gap: 8px; }
+.prow { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.prow.field { border-color: #4b5570; }
+.prow .moves { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; }
+.mv { font-size: 11.5px; background: var(--panel2); border-radius: 6px; padding: 2px 7px; color: #c9cfdc; }
+.balls { display: flex; gap: 6px; }
+.ball { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #555; background: #222; }
+.ball.ok { background: linear-gradient(#ff5050 50%, #fff 50%); border-color: #222; }
+.ball.stat { background: linear-gradient(#e0a020 50%, #fff 50%); border-color: #222; }
+.ball.fnt { background: #444; border-color: #333; }
+
+.login { max-width: 380px; margin: 12vh auto 0; text-align: center; padding: 0 16px; }
+.login h1 { font-size: 26px; margin: 0 0 6px; } .login h1 span { color: var(--accent); }
+.login p { color: var(--muted); }
+.login input { width: 100%; font: 800 26px/1 ui-monospace, monospace; letter-spacing: 6px; text-align: center; text-transform: uppercase;
+  background: var(--panel); color: var(--text); border: 2px solid var(--line); border-radius: 14px; padding: 16px; margin: 14px 0; }
+.login input:focus { outline: none; border-color: var(--accent); }
+.login .btn { width: 100%; }
+.toast { position: fixed; left: 50%; top: 70px; transform: translateX(-50%); background: var(--danger); color: #fff; padding: 10px 16px; border-radius: 10px; font-weight: 700; z-index: 20; box-shadow: 0 6px 20px rgba(0,0,0,.4); max-width: 90vw; }
+.hidden { display: none !important; }
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 30; display: flex; align-items: flex-end; justify-content: center; }
+.modal { background: var(--panel); width: 100%; max-width: 520px; border-radius: 18px 18px 0 0; padding: 16px 16px calc(18px + env(safe-area-inset-bottom)); }
+.modal h3 { margin: 4px 0 12px; }
+</style>
+</head>
+<body>
+
+<div id="login" class="login hidden">
+  <h1>Rival at <span>the Wheel</span></h1>
+  <p>Enter the code player 1 sees in the mGBA scripting console.</p>
+  <input id="codeInput" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE">
+  <button class="btn go" id="codeBtn">Join</button>
+  <p id="loginErr" style="color:var(--danger)"></p>
+</div>
+
+<div id="app" class="hidden">
+  <header><div class="wrap">
+    <div class="dot" id="dot"></div>
+    <div class="logo">Rival at <span>the Wheel</span></div>
+    <div class="spacer"></div>
+    <label class="toggle" title="The game's AI chooses for you"><input type="checkbox" id="autoAi"><span class="sw"></span>Auto AI</label>
+  </div></header>
+  <main class="wrap">
+    <div id="banner"></div>
+    <div id="action"></div>
+    <div id="field"></div>
+    <div id="partyBox"></div>
+  </main>
+</div>
+
+<div class="confirm" id="confirm"><div class="wrap">
+  <div class="what" id="confirmWhat"></div>
+  <button class="btn no" id="cancelBtn">Cancel</button>
+  <button class="btn go" id="sendBtn">Confirm</button>
+</div></div>
+
+<div id="modalRoot"></div>
+<div id="toast" class="toast hidden"></div>
+
+<script>
+const GAME = /*GAMEDATA*/null;
+
+const TYPE_LABEL = ["NORMAL","FIGHTING","FLYING","POISON","GROUND","ROCK","BUG","GHOST","STEEL","???","FIRE","WATER","GRASS","ELECTRIC","PSYCHIC","ICE","DRAGON","DARK"];
+const TYPE_COLOR = ["#a8a878","#c03028","#a890f0","#a040a0","#e0c068","#b8a038","#a8b820","#705898","#b8b8d0","#68a090","#f08030","#6890f0","#78c850","#f8d030","#f85888","#98d8d8","#7038f8","#705848"];
+// Gen 3 type chart: [attacker][defender] = multiplier (exceptions only)
+const CHART = (() => {
+  const N=0,FI=1,FL=2,PO=3,GR=4,RO=5,BU=6,GH=7,ST=8,FR=10,WA=11,GS=12,EL=13,PS=14,IC=15,DR=16,DA=17;
+  const t = {};
+  const set = (a, list) => { t[a] = {}; for (const [d, m] of list) t[a][d] = m; };
+  set(N, [[RO,.5],[GH,0],[ST,.5]]);
+  set(FI, [[N,2],[FL,.5],[PO,.5],[RO,2],[BU,.5],[GH,0],[ST,2],[PS,.5],[IC,2],[DA,2]]);
+  set(FL, [[FI,2],[RO,.5],[BU,2],[ST,.5],[GS,2],[EL,.5]]);
+  set(PO, [[PO,.5],[GR,.5],[RO,.5],[GH,.5],[ST,0],[GS,2]]);
+  set(GR, [[FL,0],[PO,2],[RO,2],[BU,.5],[ST,2],[FR,2],[GS,.5],[EL,2]]);
+  set(RO, [[FI,.5],[FL,2],[GR,.5],[BU,2],[ST,.5],[FR,2],[IC,2]]);
+  set(BU, [[FI,.5],[FL,.5],[PO,.5],[GH,.5],[ST,.5],[FR,.5],[GS,2],[PS,2],[DA,2]]);
+  set(GH, [[N,0],[GH,2],[ST,.5],[PS,2],[DA,.5]]);
+  set(ST, [[RO,2],[ST,.5],[FR,.5],[WA,.5],[EL,.5],[IC,2]]);
+  set(FR, [[RO,.5],[BU,2],[ST,2],[FR,.5],[WA,.5],[GS,2],[IC,2],[DR,.5]]);
+  set(WA, [[GR,2],[RO,2],[FR,2],[WA,.5],[GS,.5],[DR,.5]]);
+  set(GS, [[FL,.5],[PO,.5],[GR,2],[RO,2],[BU,.5],[ST,.5],[FR,.5],[WA,2],[GS,.5],[DR,.5]]);
+  set(EL, [[FL,2],[GR,0],[WA,2],[GS,.5],[EL,.5],[DR,.5]]);
+  set(PS, [[FI,2],[PO,2],[ST,.5],[PS,.5],[DA,0]]);
+  set(IC, [[FL,2],[GR,2],[ST,.5],[FR,.5],[WA,.5],[GS,2],[IC,.5],[DR,2]]);
+  set(DR, [[ST,.5],[DR,2]]);
+  set(DA, [[FI,.5],[GH,2],[ST,.5],[PS,2],[DA,.5]]);
+  return t;
+})();
+const STAT_NAMES = ["ATK","DEF","SPE","SPA","SPD","ACC","EVA"];
+const ERRORS = {
+  1: "That choice is not allowed right now.",
+  2: "Invalid move.",
+  3: "That move can't be used right now (no PP left or blocked).",
+  4: "That item can't be used right now.",
+  5: "That Pokémon can't be sent out.",
+  6: "The Pokémon is trapped and can't be switched out."
+};
+const TARGET_SELECTED = 0, TARGET_USER_OR_SEL = 2, TARGET_BOTH = 8, TARGET_USER = 16, TARGET_FOES_ALLY = 32, TARGET_FIELD = 64;
+
+let code = "";
+let state = null, lastJson = "", lastSeq = -1, lastReqKey = "";
+let sel = null;          // {kind:'move'|'item'|'switch'|'ai', a1, a2, label}
+let tab = "moves";
+let sending = false, failCount = 0, notified = -1;
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const speciesName = (id) => (GAME.species[id] || "???");
+const moveData = (id) => GAME.moves[id] || {n:"???",p:0,t:0,a:0,pp:0,tg:0};
+const itemName = (id) => GAME.items[id] || "???";
+
+function typeChip(t) { return `<span class="type" style="background:${TYPE_COLOR[t]||'#666'}">${TYPE_LABEL[t]||'?'}</span>`; }
+function typesChips(types) {
+  if (!types) return "";
+  const a = types[0], b = types[1];
+  return typeChip(a) + (b !== a ? typeChip(b) : "");
+}
+function statusChips(s1, s2, s3, fainted) {
+  const out = [];
+  if (fainted) return `<span class="st fnt">FNT</span>`;
+  if (s1 & 7) out.push(`<span class="st slp">SLP</span>`);
+  if (s1 & 0x80) out.push(`<span class="st tox">TOX</span>`);
+  else if (s1 & 0x8) out.push(`<span class="st psn">PSN</span>`);
+  if (s1 & 0x10) out.push(`<span class="st brn">BRN</span>`);
+  if (s1 & 0x20) out.push(`<span class="st frz">FRZ</span>`);
+  if (s1 & 0x40) out.push(`<span class="st par">PAR</span>`);
+  if (s2 & 7) out.push(`<span class="st misc">Confused</span>`);
+  if (s2 & 0xF0000) out.push(`<span class="st misc">Infatuated</span>`);
+  if (s2 & 0x1000000) out.push(`<span class="st misc">Substitute</span>`);
+  if (s3 & 4) out.push(`<span class="st misc">Leech Seed</span>`);
+  return out.join("");
+}
+function stageChips(stages) {
+  if (!stages) return "";
+  const out = [];
+  for (let i = 1; i <= 7; i++) {
+    const v = stages[i] - 6;
+    if (v) out.push(`<span class="stage ${v < 0 ? "neg" : ""}">${STAT_NAMES[i-1]} ${v > 0 ? "+" : ""}${v}</span>`);
+  }
+  return out.join("");
+}
+function hpBar(pct) {
+  const cls = pct <= 20 ? "low" : pct <= 50 ? "mid" : "";
+  return `<div class="hp"><i class="${cls}" style="width:${Math.max(0, Math.min(100, pct))}%"></i></div>`;
+}
+function effectiveness(moveId, defTypes) {
+  const m = moveData(moveId);
+  if (!m.p || !defTypes) return null;
+  let mult = 1;
+  const seen = new Set();
+  for (const d of defTypes) {
+    if (seen.has(d)) continue;
+    seen.add(d);
+    const row = CHART[m.t];
+    if (row && row[d] !== undefined) mult *= row[d];
+  }
+  return mult;
+}
+function effChip(mult) {
+  if (mult === null || mult === 1) return "";
+  if (mult === 0) return `<span class="eff zero">x0</span>`;
+  if (mult >= 4) return `<span class="eff x4">x4</span>`;
+  if (mult >= 2) return `<span class="eff x2">x2</span>`;
+  return `<span class="eff half">x${mult === .25 ? "¼" : "½"}</span>`;
+}
+function battlerLabel(b, st) {
+  if (st.battlersCount < 4) return "";
+  return b.id === 0 ? "left" : b.id === 2 ? "right" : b.id === 1 ? "left" : "right";
+}
+
+// ------------------------------------------------------------ network
+async function api(path, body) {
+  const url = `api/${path}?k=${encodeURIComponent(code)}&t=${Date.now()}`;
+  const opt = body ? { method: "POST", headers: {"Content-Type":"application/x-www-form-urlencoded"}, body } : {};
+  const r = await fetch(url, opt);
+  const j = await r.json();
+  if (r.status === 401) throw Object.assign(new Error("code"), { code: true });
+  return j;
+}
+
+async function poll() {
+  try {
+    const st = await api("state");
+    failCount = 0;
+    $("dot").className = "dot on";
+    const json = JSON.stringify(st);
+    if (json !== lastJson) { lastJson = json; onState(st); }
+  } catch (e) {
+    if (e.code) { logout("Wrong code, or the code has changed."); return; }
+    failCount++;
+    $("dot").className = "dot off";
+    if (failCount >= 3) renderBanner("err", "📡", "Connection lost", "Retrying... Check that player 1 has mGBA and the tunnel running.");
+  }
+  setTimeout(poll, document.hidden ? 1500 : 700);
+}
+
+function onState(st) {
+  const prevKey = lastReqKey;
+  state = st;
+  lastReqKey = st.reqType ? `${st.reqSeq}:${st.reqType}:${st.reqBattler}` : "";
+  if (lastReqKey !== prevKey) {
+    // new request: clear the selection if it is a different decision
+    const sameDecision = prevKey && lastReqKey && prevKey.split(":").slice(1).join(":") === lastReqKey.split(":").slice(1).join(":");
+    if (!sameDecision) { sel = null; tab = st.reqType === 3 ? "switch" : "moves"; }
+    if (st.reqType && st.lastError) { showToast(ERRORS[st.lastError] || "Invalid choice."); sel = null; }
+    if (st.reqType && notified !== st.reqSeq) { notified = st.reqSeq; notifyTurn(); }
+  }
+  $("autoAi").checked = !!st.auto;
+  render();
+}
+
+async function send() {
+  if (!sel || !state || !state.reqType || sending) return;
+  sending = true;
+  $("sendBtn").disabled = true;
+  const types = { move: 1, item: 2, switch: 3, ai: 4 };
+  const body = `seq=${state.reqSeq}&type=${types[sel.kind]}&a1=${sel.a1 ?? 0}&a2=${sel.a2 ?? 0}`;
+  try {
+    const r = await api("choose", body);
+    if (!r.ok) showToast(r.error || "Error");
+    else { sel = null; state.reqType = 0; lastJson = ""; render(); }
+  } catch (e) { showToast("Sending failed, please try again."); }
+  sending = false;
+  $("sendBtn").disabled = false;
+}
+
+// ------------------------------------------------------------ interface
+function renderBanner(kind, icon, big, small) {
+  $("banner").innerHTML = `<div class="banner ${kind}"><div class="icon">${icon}</div><div><div class="big">${esc(big)}</div><div class="small">${esc(small || "")}</div></div></div>`;
+}
+
+function render() {
+  const st = state;
+  if (!st) return;
+  if (st.game === "none") { renderBanner("", "🎮", "Game not running", "Player 1 needs to open the ROM in mGBA."); clearBattle(); return; }
+  if (st.game === "wrong") { renderBanner("err", "⚠️", "Unpatched ROM", "The ROM open in mGBA doesn't have the Rival at the Wheel patch."); clearBattle(); return; }
+  if (!st.inBattle) { renderBanner("", "🌿", "No battle right now", "When player 1 battles a trainer, it'll be your turn."); clearBattle(); hideConfirm(); return; }
+
+  const me = st.battlers.find(b => b.id === st.reqBattler);
+  const who = st.trainerName ? `${st.trainerClass} ${st.trainerName}` : st.trainerClass;
+  if (st.reqType) {
+    const what = st.reqType === 3 ? "Choose the next Pokémon" : `What will ${me ? speciesName(me.species) : ""} do?`;
+    renderBanner("turn", "🔥", "Your turn!", `${what}${who ? " · you are " + who : ""}`);
+  } else {
+    renderBanner("", "⏳", "Player 1's turn", `${who ? "You are " + who + " · " : ""}turn ${st.turn + 1}`);
+  }
+  renderAction(st, me);
+  renderField(st);
+  renderParty(st);
+  updateConfirm();
+}
+
+function clearBattle() { $("action").innerHTML = ""; $("field").innerHTML = ""; $("partyBox").innerHTML = ""; }
+
+function renderAction(st, me) {
+  const box = $("action");
+  if (!st.reqType || !me) { box.innerHTML = ""; hideConfirm(); return; }
+  const tabs = [];
+  if (st.reqType !== 3) tabs.push(["moves", "Moves"]);
+  if (st.reqType === 1) tabs.push(["items", "Items"]);
+  if (st.reqType !== 2) tabs.push(["switch", st.reqType === 3 ? "Party" : "Switch"]);
+  if (!tabs.find(t => t[0] === tab)) tab = tabs[0][0];
+  let html = `<h2>${st.reqType === 3 ? "Who goes in next?" : "Your choice" + (battlerLabel(me, st) ? " · " + battlerLabel(me, st) + " Pokémon" : "")}</h2>`;
+  if (tabs.length > 1) html += `<div class="tabs">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${k === tab ? "on" : ""}">${l}</button>`).join("")}</div>`;
+  html += `<div class="choices">`;
+  if (tab === "moves") html += movesHtml(st, me);
+  if (tab === "items") html += itemsHtml(st);
+  if (tab === "switch") html += switchHtml(st);
+  html += `</div>`;
+  html += `<button class="ai-btn ${sel && sel.kind === "ai" ? "sel" : ""}" data-ai="1">🤖 Let the game's AI decide</button>`;
+  box.innerHTML = html;
+}
+
+function foesOf(st) { return st.battlers.filter(b => !b.foe && b.present); }
+
+function movesHtml(st, me) {
+  const unusable = st.unusableMoves;
+  if ((unusable & 15) === 15) {
+    const s = sel && sel.kind === "move";
+    return `<button class="choice wide ${s ? "sel" : ""}" data-move="0" data-struggle="1"><div class="t">STRUGGLE</div><div class="s">No usable moves: it will use Struggle</div></button>`;
+  }
+  const foes = foesOf(st);
+  let html = "";
+  for (let i = 0; i < 4; i++) {
+    const id = me.moves[i];
+    if (!id) { html += `<button class="choice" disabled><div class="t">—</div></button>`; continue; }
+    const m = moveData(id);
+    const blocked = (unusable >> i) & 1;
+    const effs = foes.length === 1 ? effChip(effectiveness(id, foes[0].types)) :
+      foes.map(f => effChip(effectiveness(id, f.types))).filter(Boolean).join("");
+    const isSel = sel && sel.kind === "move" && sel.a1 === i;
+    html += `<button class="choice ${isSel ? "sel" : ""}" data-move="${i}" ${blocked ? "disabled" : ""}>
+      <div class="t">${esc(m.n)}</div>
+      <div class="s">${typeChip(m.t)} PP ${me.pp[i]}/${me.maxPp[i]} ${m.p ? "· POW " + (m.p === 1 ? "var." : m.p) : "· status"} ${m.a ? "· ACC " + m.a : ""} ${effs}</div>
+    </button>`;
+  }
+  return html;
+}
+
+function itemsHtml(st) {
+  let html = "", any = false;
+  st.trainerItems.forEach((id, i) => {
+    if (!id) return;
+    any = true;
+    const ok = (st.itemUsable >> i) & 1;
+    const isSel = sel && sel.kind === "item" && sel.a1 === i;
+    html += `<button class="choice ${isSel ? "sel" : ""}" data-item="${i}" ${ok ? "" : "disabled"}>
+      <div class="t">${esc(itemName(id))}</div><div class="s">${ok ? "Use on the active Pokémon" : "Not useful right now"}</div></button>`;
+  });
+  if (!any) html = `<div class="note wide" style="grid-column:1/-1">This trainer has no items (left).</div>`;
+  return html;
+}
+
+function switchHtml(st) {
+  let html = "";
+  if (st.reqType === 1 && !st.canSwitch) html += `<div class="note" style="grid-column:1/-1">⛓️ The Pokémon is trapped and can't be switched out.</div>`;
+  let any = false;
+  for (const p of st.party) {
+    if (p.onField) continue;
+    any = true;
+    const ok = p.canSend && (st.reqType === 3 || st.canSwitch);
+    const pct = p.maxHP ? Math.round(p.hp * 100 / p.maxHP) : 0;
+    const isSel = sel && sel.kind === "switch" && sel.a1 === p.slot;
+    html += `<button class="choice ${isSel ? "sel" : ""}" data-switch="${p.slot}" ${ok ? "" : "disabled"}>
+      <div class="t">${esc(p.egg ? "EGG" : speciesName(p.species))} <span class="lv">Lv${p.level}</span></div>
+      ${hpBar(pct)}
+      <div class="s">${p.hp}/${p.maxHP} HP ${typesChips(GAME.speciesTypes[p.species])} ${statusChips(p.status, 0, 0, p.hp === 0)}</div></button>`;
+  }
+  if (!any) html += `<div class="note" style="grid-column:1/-1">No other Pokémon in the party.</div>`;
+  return html;
+}
+
+function renderField(st) {
+  const foes = st.battlers.filter(b => b.foe);
+  const players = st.battlers.filter(b => !b.foe);
+  let html = `<h2>Your Pokémon in battle</h2><div class="grid2">`;
+  for (const b of foes) {
+    const pct = b.maxHP ? Math.round(b.hp * 100 / b.maxHP) : 0;
+    const side = battlerLabel(b, st);
+    html += `<div class="card mon ${b.present ? "" : "dim"}">
+      <div class="top"><span class="name">${esc(speciesName(b.species))}</span><span class="lv">Lv${b.level}</span>${side ? `<span class="tag">${side}</span>` : ""}${b.id === st.reqBattler && st.reqType ? `<span class="tag" style="color:var(--accent);border-color:var(--accent)">choosing</span>` : ""}</div>
+      ${hpBar(pct)}
+      <div class="hptext"><span>${b.hp}/${b.maxHP} HP</span><span>${b.ability ? esc(GAME.abilities[b.ability]) : ""}${b.item ? " · " + esc(itemName(b.item)) : ""}</span></div>
+      <div class="chips">${typesChips(b.types)}${statusChips(b.status1, b.status2, b.status3, b.hp === 0)}${stageChips(b.stages)}</div>
+    </div>`;
+  }
+  html += `</div><h2>Opponent: player 1</h2><div class="grid2">`;
+  for (const b of players) {
+    const side = battlerLabel(b, st);
+    html += `<div class="card mon ${b.present ? "" : "dim"}">
+      <div class="top"><span class="name">${esc(speciesName(b.species))}</span><span class="lv">Lv${b.level}</span>${side ? `<span class="tag">${side}</span>` : ""}</div>
+      ${hpBar(b.hpPct)}
+      <div class="hptext"><span>${b.hpPct}% HP</span><span>${b.lastMove ? "last move: " + esc(moveData(b.lastMove).n) : ""}</span></div>
+      <div class="chips">${typesChips(b.types)}${statusChips(b.status1, b.status2, b.status3, b.hpPct === 0)}${stageChips(b.stages)}</div>
+    </div>`;
+  }
+  html += `</div>`;
+  const pp = st.playerParty || [];
+  html += `<div class="note" style="display:flex;align-items:center;gap:10px;margin-top:10px">Player 1's party <div class="balls">${pp.map(v => `<span class="ball ${["", "ok", "stat", "fnt"][v]}"></span>`).join("")}</div></div>`;
+  const w = st.weather;
+  const weather = (w & 7) ? "Rain" : (w & 0x18) ? "Sandstorm" : (w & 0x60) ? "Sun" : (w & 0x80) ? "Hail" : "";
+  const sideNames = (v) => [v & 1 ? "Reflect" : "", v & 2 ? "Light Screen" : "", v & 0x10 ? "Spikes" : "", v & 0x20 ? "Safeguard" : "", v & 0x100 ? "Mist" : ""].filter(Boolean).join(", ");
+  const extra = [weather && "Weather: " + weather, st.sides && sideNames(st.sides[1]) && "Your side: " + sideNames(st.sides[1]), st.sides && sideNames(st.sides[0]) && "Opponent's side: " + sideNames(st.sides[0])].filter(Boolean);
+  if (extra.length) html += `<div class="note">${extra.join(" · ")}</div>`;
+  $("field").innerHTML = html;
+}
+
+function renderParty(st) {
+  let html = `<h2>Your party</h2><div class="party">`;
+  for (const p of st.party) {
+    const pct = p.maxHP ? Math.round(p.hp * 100 / p.maxHP) : 0;
+    const moves = p.moves.map((m, i) => m ? `<span class="mv">${esc(moveData(m).n)} ${p.pp[i]}/${p.maxPp[i]}</span>` : "").join("");
+    html += `<div class="prow ${p.onField ? "field" : ""}">
+      <div><b>${esc(p.egg ? "EGG" : speciesName(p.species))}</b> <span class="lv">Lv${p.level}</span> ${p.onField ? `<span class="tag">active</span>` : ""}</div>
+      <div class="meta">${p.hp}/${p.maxHP} HP</div>
+      <div style="grid-column:1/-1">${hpBar(pct)}</div>
+      <div class="chips" style="grid-column:1/-1">${typesChips(GAME.speciesTypes[p.species])}${statusChips(p.status, 0, 0, p.hp === 0)}${p.item ? `<span class="mv">🎒 ${esc(itemName(p.item))}</span>` : ""}</div>
+      <div class="moves">${moves}</div></div>`;
+  }
+  html += `</div>`;
+  $("partyBox").innerHTML = html;
+}
+
+function selectionLabel() {
+  if (!sel || !state) return "";
+  const me = state.battlers.find(b => b.id === state.reqBattler);
+  if (sel.kind === "ai") return "Let <b>the AI</b> decide";
+  if (sel.kind === "move") {
+    if (sel.struggle) return "Use <b>Struggle</b>";
+    const m = moveData(me.moves[sel.a1]);
+    const t = state.battlers.find(b => b.id === sel.a2);
+    const target = state.battlersCount === 4 && sel.pickedTarget && t ? ` on <b>${esc(speciesName(t.species))}</b>` : "";
+    return `Use <b>${esc(m.n)}</b>${target}`;
+  }
+  if (sel.kind === "item") return `Use <b>${esc(itemName(state.trainerItems[sel.a1]))}</b>`;
+  if (sel.kind === "switch") {
+    const p = state.party.find(x => x.slot === sel.a1);
+    return `Send out <b>${esc(speciesName(p.species))}</b>`;
+  }
+  return "";
+}
+function updateConfirm() {
+  if (sel && state && state.reqType) {
+    $("confirmWhat").innerHTML = selectionLabel();
+    $("confirm").classList.add("show");
+  } else hideConfirm();
+}
+function hideConfirm() { $("confirm").classList.remove("show"); }
+
+function chooseTarget(moveSlot) {
+  const st = state, me = st.battlers.find(b => b.id === st.reqBattler);
+  const m = moveData(me.moves[moveSlot]);
+  const options = st.battlers.filter(b => b.present && b.id !== me.id);
+  const root = $("modalRoot");
+  root.innerHTML = `<div class="modal-bg" id="mbg"><div class="modal"><h3>Use ${esc(m.n)} on whom?</h3><div class="choices">
+    ${options.map(b => `<button class="choice" data-target="${b.id}"><div class="t">${esc(speciesName(b.species))}</div>
+      <div class="s">${b.foe ? "your partner" : "opponent, " + battlerLabel(b, st)} ${effChip(effectiveness(me.moves[moveSlot], b.types))}</div></button>`).join("")}
+    </div><button class="ai-btn" id="mclose">Cancel</button></div></div>`;
+  $("mbg").onclick = (e) => {
+    const t = e.target.closest("[data-target]");
+    if (t) { sel = { kind: "move", a1: moveSlot, a2: +t.dataset.target, pickedTarget: true }; root.innerHTML = ""; render(); }
+    else if (e.target.id === "mbg" || e.target.id === "mclose") root.innerHTML = "";
+  };
+}
+
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b || b.disabled || !state) return;
+  if (b.dataset.tab) { tab = b.dataset.tab; render(); return; }
+  if (b.dataset.ai) { sel = { kind: "ai" }; render(); return; }
+  if (b.dataset.move !== undefined) {
+    const slot = +b.dataset.move;
+    if (b.dataset.struggle) { sel = { kind: "move", a1: 0, a2: 0, struggle: true }; render(); return; }
+    const me = state.battlers.find(x => x.id === state.reqBattler);
+    const m = moveData(me.moves[slot]);
+    const needsTarget = state.battlersCount === 4 && m.tg === TARGET_SELECTED &&
+      state.battlers.filter(x => x.present && x.id !== me.id).length > 1;
+    if (needsTarget) { chooseTarget(slot); return; }
+    const foe = state.battlers.find(x => !x.foe && x.present);
+    sel = { kind: "move", a1: slot, a2: foe ? foe.id : 0 };
+    render(); return;
+  }
+  if (b.dataset.item !== undefined) { sel = { kind: "item", a1: +b.dataset.item }; render(); return; }
+  if (b.dataset.switch !== undefined) { sel = { kind: "switch", a1: +b.dataset.switch }; render(); return; }
+});
+$("sendBtn").onclick = send;
+$("cancelBtn").onclick = () => { sel = null; render(); };
+$("autoAi").onchange = async (e) => {
+  try { await api("auto", "on=" + (e.target.checked ? 1 : 0)); } catch (err) { showToast("Failed"); }
+};
+
+let toastTimer = null;
+function showToast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add("hidden"), 3500);
+}
+
+let audioCtx = null;
+function notifyTurn() {
+  if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = "square"; o.frequency.value = 880;
+    g.gain.setValueAtTime(.05, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.0001, audioCtx.currentTime + .25);
+    o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + .26);
+  } catch (e) {}
+  if (document.hidden) document.title = "⚡ Your turn! · Rival at the Wheel";
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) document.title = "Rival at the Wheel"; });
+
+// ------------------------------------------------------------ login
+function store(k, v) { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
+function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+
+async function tryLogin(c) {
+  code = (c || "").trim().toUpperCase();
+  if (!code) return false;
+  try {
+    const r = await fetch(`api/state?k=${encodeURIComponent(code)}&t=${Date.now()}`);
+    if (r.status === 401) return false;
+    store("rt_code", code);
+    $("login").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    onState(await r.json());
+    poll();
+    return true;
+  } catch (e) {
+    $("loginErr").textContent = "The server isn't responding. Does player 1 have mGBA and the tunnel running?";
+    return false;
+  }
+}
+function logout(msg) {
+  store("rt_code", null);
+  $("app").classList.add("hidden");
+  $("login").classList.remove("hidden");
+  $("loginErr").textContent = msg || "";
+}
+$("codeBtn").onclick = async () => { if (!(await tryLogin($("codeInput").value)) && !$("loginErr").textContent) $("loginErr").textContent = "Wrong code."; };
+$("codeInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("codeBtn").click(); });
+
+(async () => {
+  const fromUrl = new URLSearchParams(location.search).get("k");
+  const saved = fromUrl || load("rt_code");
+  if (saved && await tryLogin(saved)) return;
+  $("login").classList.remove("hidden");
+  if (saved && !$("loginErr").textContent) $("loginErr").textContent = "The saved code is no longer valid.";
+})();
+</script>
+</body>
+</html>

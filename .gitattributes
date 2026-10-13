@@ -1,0 +1,4 @@
+*.bps binary
+*.bat text eol=crlf
+*.lua text eol=lf
+*.diff text eol=lf
